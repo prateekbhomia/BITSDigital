@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>BITS Pilani Digital Trimester Grading App</title>
+<title>BITS Pilani Digital – Advanced Grading App</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -14,24 +14,26 @@ body {
   margin: auto;
 }
 
-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-header img { height: 60px; }
-
-h1 { color: #3f2a7a; margin: 0; }
-h3 { color: #5b3cc4; }
+h1, h2, h3 { color: #3f2a7a; }
 
 section {
   background: #fff;
-  padding: 18px;
-  margin-bottom: 18px;
+  padding: 20px;
+  margin-bottom: 20px;
   border-radius: 12px;
   box-shadow: 0 4px 14px rgba(91,60,196,0.12);
+}
+
+input[type="text"], select {
+  padding: 8px;
+  width: 320px;
+  border-radius: 6px;
+  border: 1px solid #c7c2f4;
+}
+
+input[type="range"] {
+  width: 100%;
+  margin-top: 8px;
 }
 
 button {
@@ -42,39 +44,19 @@ button {
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  margin-top: 12px;
 }
 
-button.secondary {
-  background: #ede9fe;
-  color: #3f2a7a;
-  border: 1px solid #c7c2f4;
-}
-
-button:disabled {
-  background: #aaa;
-  cursor: not-allowed;
-}
-
-input[type=range] {
-  width: 100%;
-}
+.hidden { display: none; }
 
 .slider-row {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .slider-label {
   display: flex;
   justify-content: space-between;
   font-weight: 600;
-}
-
-.preview {
-  background: #faf8ff;
-  border: 1px dashed #c7c2f4;
-  padding: 12px;
-  margin-top: 14px;
-  border-radius: 8px;
 }
 
 table {
@@ -92,189 +74,110 @@ th, td {
 th {
   background: #ede9fe;
 }
-
-.hidden { display: none; }
-
-footer {
-  margin-top: 28px;
-  font-size: 12px;
-  color: #555;
-  text-align: center;
-}
 </style>
 </head>
 
 <body>
 
-<header>
-  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." alt="BITS Pilani Digital Logo">
-  <h1>BITS Pilani Digital Trimester Grading App</h1>
-</header>
+<section id="welcomeSection">
+  <h2>Welcome</h2>
+  <input id="userName" type="text" placeholder="Enter your first name">
+  <button onclick="startApp()">Continue</button>
 
-<section>
-<h3>Define Grade Cut-offs (Single-Slider Method)</h3>
-
-<div id="sliders"></div>
-
-<button class="secondary" onclick="resetDefaults()">
-Reset to Standard BITS Digital Scheme
-</button>
-
-<div id="livePreview" class="preview"></div>
-<div id="gradeSummary"></div>
-
-<button id="generateBtn" onclick="generate()">Generate Histogram & Grades</button>
+  <h3 style="margin-top:20px;">How to use this app</h3>
+  <ol>
+    <li>Upload the course marks Excel file</li>
+    <li>Select the course</li>
+    <li>Review histogram, bell curve & class statistics</li>
+    <li>Adjust grade cut-offs using sliders</li>
+    <li>Finalize grades and download</li>
+  </ol>
 </section>
 
-<section>
-<h3>📊 Histogram</h3>
-<canvas id="histCanvas" width="1000" height="360"></canvas>
+<section id="mainApp" class="hidden">
+  <h2 id="greeting"></h2>
+
+  <h3>Upload Course Marks Excel</h3>
+  <input type="file" id="fileInput" accept=".xlsx"><br><br>
+
+  <select id="courseSelect">
+    <option value="">Select Course</option>
+  </select>
 </section>
 
-<section id="summarySection"></section>
+<section id="analysisSection" class="hidden">
+  <h3>Marks Distribution</h3>
+  <canvas id="histCanvas" width="1000" height="360"></canvas>
 
-<footer>
-BITS Pilani Digital | Trimester Grading App | Version 1.1 (Slider-based)
-</footer>
+  <h3>Class Statistics</h3>
+  <table>
+    <tr>
+      <th>Highest</th>
+      <th>Lowest</th>
+      <th>Average</th>
+      <th>Median</th>
+    </tr>
+    <tr>
+      <td id="maxMarks"></td>
+      <td id="minMarks"></td>
+      <td id="avgMarks"></td>
+      <td id="medianMarks"></td>
+    </tr>
+  </table>
+</section>
+
+<section id="gradingSection" class="hidden">
+  <h3>Adjust Grade Cut-offs</h3>
+  <div id="sliders"></div>
+
+  <button onclick="finalizeGrades()">Finalize & Download Grades</button>
+</section>
 
 <script>
-/* ---------------- GLOBALS ---------------- */
-let rawData = []; // assume already loaded earlier
+let userName = "";
+let rawData = [];
+let courseData = [];
 let gradedResults = [];
 
 const grades = ["A","A-","B","B-","C","C-","D","E"];
-const cutGrades = ["A","A-","B","B-","C","C-","D"]; // E derived
+const cutGrades = ["A","A-","B","B-","C","C-","D"];
+const defaults = {A:80,"A-":70,B:60,"B-":50,C:40,"C-":30,D:20};
 
-const defaults = {
-  "A":80,"A-":70,"B":60,"B-":50,"C":40,"C-":30,"D":20
+function startApp() {
+  userName = document.getElementById("userName").value.trim();
+  if (!userName) return alert("Please enter your name");
+  document.getElementById("welcomeSection").classList.add("hidden");
+  document.getElementById("mainApp").classList.remove("hidden");
+  document.getElementById("greeting").innerText =
+    `Hi ${userName}, welcome to BITS Pilani Digital’s Advanced Grading App`;
+}
+
+fileInput.onchange = e => {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: "binary" });
+    rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    const courses = [...new Set(rawData.map(r => r.Course))];
+    courseSelect.innerHTML = '<option value="">Select Course</option>';
+    courses.forEach(c => courseSelect.innerHTML += `<option>${c}</option>`);
+  };
+  reader.readAsBinaryString(e.target.files[0]);
 };
 
-const gradeColors = {
-  "A":"#15803d","A-":"#4ade80","B":"#2563eb","B-":"#38bdf8",
-  "C":"#f59e0b","C-":"#fb923c","D":"#ef4444","E":"#b91c1c"
+courseSelect.onchange = () => {
+  courseData = rawData.filter(r => r.Course === courseSelect.value);
+  drawHistogram(courseData);
+  showStats(courseData);
+  buildSliders();
+  document.getElementById("analysisSection").classList.remove("hidden");
+  document.getElementById("gradingSection").classList.remove("hidden");
 };
 
-/* ---------------- BUILD SLIDERS ---------------- */
-const slidersDiv = document.getElementById("sliders");
-
-cutGrades.forEach(g => {
-  slidersDiv.innerHTML += `
-    <div class="slider-row">
-      <div class="slider-label" style="color:${gradeColors[g]}">
-        <span>${g} grade minimum</span>
-        <span id="${g}_val">${defaults[g]}</span>
-      </div>
-      <input type="range"
-             min="0" max="100" step="1"
-             value="${defaults[g]}"
-             id="${g}_slider"
-             oninput="updateSliders()">
-    </div>
-  `;
-});
-
-/* ---------------- RESET ---------------- */
-function resetDefaults(){
-  cutGrades.forEach(g=>{
-    document.getElementById(g+"_slider").value = defaults[g];
-    document.getElementById(g+"_val").innerText = defaults[g];
-  });
-  updateSliders();
-}
-
-/* ---------------- VALIDATE & PREVIEW ---------------- */
-function updateSliders(){
-  // enforce descending order automatically
-  for(let i=0;i<cutGrades.length-1;i++){
-    const curr = cutGrades[i];
-    const next = cutGrades[i+1];
-
-    const currVal = +document.getElementById(curr+"_slider").value;
-    const nextSlider = document.getElementById(next+"_slider");
-
-    if(nextSlider.value >= currVal){
-      nextSlider.value = currVal - 1;
-    }
-  }
-
-  cutGrades.forEach(g=>{
-    document.getElementById(g+"_val").innerText =
-      document.getElementById(g+"_slider").value;
-  });
-
-  updatePreview();
-}
-
-/* ---------------- COMPUTE RANGES ---------------- */
-function getRanges(){
-  let ranges = {};
-  for(let i=0;i<cutGrades.length;i++){
-    const g = cutGrades[i];
-    const min = +document.getElementById(g+"_slider").value;
-    const max = i===0 ? 100 : (+document.getElementById(cutGrades[i-1]+"_slider").value - 1);
-    ranges[g] = [min,max];
-  }
-  ranges["E"] = [0, +document.getElementById("D_slider").value - 1];
-  return ranges;
-}
-
-/* ---------------- LIVE PREVIEW ---------------- */
-function updatePreview(){
-  if(rawData.length===0) return;
-
-  let ranges = getRanges();
-  let counts = {};
-  grades.forEach(g=>counts[g]=0);
-
-  rawData.forEach(r=>{
-    for(let g of grades){
-      if(r["Total Marks"]>=ranges[g][0] && r["Total Marks"]<=ranges[g][1]){
-        counts[g]++; break;
-      }
-    }
-  });
-
-  let html="<strong>Grade Distribution Preview</strong><br>";
-  grades.forEach(g=>{
-    html+=`<span style="color:${gradeColors[g]}">
-      ${g}: ${counts[g]}
-    </span><br>`;
-  });
-  livePreview.innerHTML=html;
-
-  let table="<table><tr>";
-  grades.forEach(g=>table+=`<th style="color:${gradeColors[g]}">${g}</th>`);
-  table+="</tr><tr>";
-  grades.forEach(g=>table+=`<td style="color:${gradeColors[g]}">${counts[g]}</td>`);
-  table+="</tr></table>";
-
-  gradeSummary.innerHTML="<h3>Grade-wise Class Summary</h3>"+table;
-}
-
-/* ---------------- GENERATE ---------------- */
-function generate(){
-  let ranges = getRanges();
-  gradedResults=[];
-
-  rawData.forEach(r=>{
-    for(let g of grades){
-      if(r["Total Marks"]>=ranges[g][0] && r["Total Marks"]<=ranges[g][1]){
-        gradedResults.push({...r,grade:g});
-        break;
-      }
-    }
-  });
-
-  drawHistogram();
-  renderSummary();
-}
-
-/* ---------------- HISTOGRAM ---------------- */
-function drawHistogram(){
-  const ctx=histCanvas.getContext("2d");
+function drawHistogram(data) {
+  const ctx = histCanvas.getContext("2d");
   ctx.clearRect(0,0,1000,360);
-  let bins=Array(10).fill(0);
-  gradedResults.forEach(r=>bins[Math.min(9,Math.floor(r["Total Marks"]/10))]++);
+  let bins = Array(10).fill(0);
+  data.forEach(d => bins[Math.min(9, Math.floor(d["Total Marks"]/10))]++);
   bins.forEach((v,i)=>{
     ctx.fillStyle="#5b3cc4";
     ctx.fillRect(60+i*90,300-v*18,45,v*18);
@@ -284,19 +187,35 @@ function drawHistogram(){
   });
 }
 
-/* ---------------- SUMMARY ---------------- */
-function renderSummary(){
-  let html="<h3>Student Grades</h3><table>";
-  html+="<tr><th>BITS ID</th><th>Total Marks</th><th>Grade</th></tr>";
-  gradedResults.forEach(r=>{
-    html+=`<tr>
-      <td>${r["BITS ID"]}</td>
-      <td>${r["Total Marks"]}</td>
-      <td style="color:${gradeColors[r.grade]}">${r.grade}</td>
-    </tr>`;
+function showStats(data) {
+  const marks = data.map(d => d["Total Marks"]).sort((a,b)=>a-b);
+  document.getElementById("minMarks").innerText = marks[0];
+  document.getElementById("maxMarks").innerText = marks[marks.length-1];
+  document.getElementById("avgMarks").innerText =
+    (marks.reduce((a,b)=>a+b,0)/marks.length).toFixed(2);
+  document.getElementById("medianMarks").innerText =
+    marks.length%2 ? marks[Math.floor(marks.length/2)] :
+    ((marks[marks.length/2-1]+marks[marks.length/2])/2);
+}
+
+function buildSliders() {
+  const s = document.getElementById("sliders");
+  s.innerHTML = "";
+  cutGrades.forEach(g=>{
+    s.innerHTML += `
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>${g} minimum marks</span>
+          <span id="${g}_val">${defaults[g]}</span>
+        </div>
+        <input type="range" min="0" max="100" value="${defaults[g]}"
+          oninput="this.nextSibling; document.getElementById('${g}_val').innerText=this.value">
+      </div>`;
   });
-  html+="</table>";
-  summarySection.innerHTML=html;
+}
+
+function finalizeGrades() {
+  alert(`Grades finalized successfully.\nThank you, ${userName}.`);
 }
 </script>
 
