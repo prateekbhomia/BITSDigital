@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>BITS Pilani Digital – Advanced Grading App</title>
+<meta charset="UTF-8" />
+<title>BITS Pilani Digital Advanced Grading App</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -14,26 +14,32 @@ body {
   margin: auto;
 }
 
-h1, h2, h3 { color: #3f2a7a; }
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+header img { height: 60px; }
+
+h1 { color: #3f2a7a; margin: 0; }
+h3 { color: #5b3cc4; }
 
 section {
   background: #fff;
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 18px;
+  margin-bottom: 18px;
   border-radius: 12px;
   box-shadow: 0 4px 14px rgba(91,60,196,0.12);
 }
 
-input[type="text"], select {
+input, select {
   padding: 8px;
-  width: 320px;
+  margin: 6px 0;
   border-radius: 6px;
   border: 1px solid #c7c2f4;
-}
-
-input[type="range"] {
-  width: 100%;
-  margin-top: 8px;
+  width: 320px;
 }
 
 button {
@@ -47,16 +53,34 @@ button {
   margin-top: 12px;
 }
 
-.hidden { display: none; }
-
-.slider-row {
-  margin-bottom: 16px;
+button:disabled {
+  background: #aaa;
+  cursor: not-allowed;
 }
 
-.slider-label {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.grade-card {
+  border: 1px solid #e0dcfa;
+  padding: 14px;
+  border-radius: 10px;
+}
+
+.preview {
+  background: #faf8ff;
+  border: 1px dashed #c7c2f4;
+  padding: 12px;
+  margin-top: 14px;
+  border-radius: 8px;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: bold;
 }
 
 table {
@@ -73,40 +97,51 @@ th, td {
 
 th {
   background: #ede9fe;
+  color: #3f2a7a;
 }
+
+.hidden { display: none; }
 </style>
 </head>
 
 <body>
 
-<section id="welcomeSection">
-  <h2>Welcome</h2>
-  <input id="userName" type="text" placeholder="Enter your first name">
-  <button onclick="startApp()">Continue</button>
+<header>
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." alt="BITS Pilani Digital Logo">
+  <h1>BITS Pilani Digital Advanced Grading App</h1>
+</header>
 
-  <h3 style="margin-top:20px;">How to use this app</h3>
+<!-- LANDING -->
+<section id="welcomeSection">
+  <input id="instName" placeholder="Enter your first name">
+  <button onclick="proceed()">Continue</button>
+
+  <h3 style="margin-top:16px;">How to use this app</h3>
   <ol>
-    <li>Upload the course marks Excel file</li>
+    <li>Upload course marks Excel</li>
     <li>Select the course</li>
-    <li>Review histogram, bell curve & class statistics</li>
-    <li>Adjust grade cut-offs using sliders</li>
-    <li>Finalize grades and download</li>
+    <li>Review histogram, bell curve and statistics</li>
+    <li>Adjust grade ranges</li>
+    <li>Finalize and download grades</li>
   </ol>
 </section>
 
-<section id="mainApp" class="hidden">
-  <h2 id="greeting"></h2>
+<!-- UPLOAD -->
+<section id="uploadSection" class="hidden">
+  <h3 id="greeting"></h3>
+  <input type="file" id="fileInput" accept=".xlsx">
+</section>
 
-  <h3>Upload Course Marks Excel</h3>
-  <input type="file" id="fileInput" accept=".xlsx"><br><br>
-
+<section id="courseSection" class="hidden">
+  <h3>Select Course</h3>
   <select id="courseSelect">
-    <option value="">Select Course</option>
+    <option value="">-- Select Course --</option>
   </select>
 </section>
 
+<!-- ANALYSIS -->
 <section id="analysisSection" class="hidden">
-  <h3>Marks Distribution</h3>
+  <h3>📊 Marks Distribution</h3>
   <canvas id="histCanvas" width="1000" height="360"></canvas>
 
   <h3>Class Statistics</h3>
@@ -126,96 +161,173 @@ th {
   </table>
 </section>
 
+<!-- GRADING -->
 <section id="gradingSection" class="hidden">
-  <h3>Adjust Grade Cut-offs</h3>
-  <div id="sliders"></div>
+  <h3>Define Grade Ranges</h3>
+  <div class="grid" id="gradeGrid"></div>
+  <div id="rangeError" class="error"></div>
+  <div id="livePreview" class="preview"></div>
 
-  <button onclick="finalizeGrades()">Finalize & Download Grades</button>
+  <button id="generateBtn" onclick="generate()" disabled>
+    Finalize Grades & Download
+  </button>
 </section>
 
 <script>
-let userName = "";
-let rawData = [];
-let courseData = [];
-let gradedResults = [];
+let instructorName="", rawData=[], gradedResults=[];
+const grades=["A","A-","B","B-","C","C-","D","E"];
+const defaults={
+"A":[80,100],"A-":[70,79],"B":[60,69],"B-":[50,59],
+"C":[40,49],"C-":[30,39],"D":[20,29],"E":[0,19]
+};
 
-const grades = ["A","A-","B","B-","C","C-","D","E"];
-const cutGrades = ["A","A-","B","B-","C","C-","D"];
-const defaults = {A:80,"A-":70,B:60,"B-":50,C:40,"C-":30,D:20};
-
-function startApp() {
-  userName = document.getElementById("userName").value.trim();
-  if (!userName) return alert("Please enter your name");
-  document.getElementById("welcomeSection").classList.add("hidden");
-  document.getElementById("mainApp").classList.remove("hidden");
-  document.getElementById("greeting").innerText =
-    `Hi ${userName}, welcome to BITS Pilani Digital’s Advanced Grading App`;
+function proceed(){
+  instructorName=instName.value.trim();
+  if(!instructorName){ alert("Please enter your first name"); return; }
+  welcomeSection.classList.add("hidden");
+  uploadSection.classList.remove("hidden");
+  greeting.innerText=`Hi ${instructorName}, welcome to BITS Pilani Digital’s Advanced Grading App`;
 }
 
-fileInput.onchange = e => {
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const wb = XLSX.read(ev.target.result, { type: "binary" });
-    rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    const courses = [...new Set(rawData.map(r => r.Course))];
-    courseSelect.innerHTML = '<option value="">Select Course</option>';
-    courses.forEach(c => courseSelect.innerHTML += `<option>${c}</option>`);
+fileInput.onchange=e=>{
+  const r=new FileReader();
+  r.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:"binary"});
+    rawData=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    courseSelect.innerHTML='<option value="">-- Select Course --</option>';
+    [...new Set(rawData.map(r=>r.Course))].forEach(c=>{
+      courseSelect.innerHTML+=`<option>${c}</option>`;
+    });
+    courseSection.classList.remove("hidden");
   };
-  reader.readAsBinaryString(e.target.files[0]);
+  r.readAsBinaryString(e.target.files[0]);
 };
 
-courseSelect.onchange = () => {
-  courseData = rawData.filter(r => r.Course === courseSelect.value);
-  drawHistogram(courseData);
-  showStats(courseData);
-  buildSliders();
-  document.getElementById("analysisSection").classList.remove("hidden");
-  document.getElementById("gradingSection").classList.remove("hidden");
+courseSelect.onchange=()=>{
+  if(courseSelect.value){
+    analysisSection.classList.remove("hidden");
+    gradingSection.classList.remove("hidden");
+    drawHistogram();
+    computeStats();
+    resetDefaults();
+    validateRanges();
+  }
 };
 
-function drawHistogram(data) {
-  const ctx = histCanvas.getContext("2d");
+function dropdown(id){
+  let h=`<select id="${id}" onchange="validateRanges()">`;
+  for(let i=0;i<=100;i++) h+=`<option value="${i}">${i}</option>`;
+  return h+"</select>";
+}
+
+grades.forEach(g=>{
+  gradeGrid.innerHTML+=`
+  <div class="grade-card">
+    <strong>${g}</strong><br><br>
+    Min ${dropdown(g+"min")}<br>
+    Max ${dropdown(g+"max")}
+  </div>`;
+});
+
+function resetDefaults(){
+  grades.forEach(g=>{
+    document.getElementById(g+"min").value=defaults[g][0];
+    document.getElementById(g+"max").value=defaults[g][1];
+  });
+}
+
+function validateRanges(){
+  let err="";
+  for(let i=0;i<grades.length;i++){
+    const g=grades[i];
+    const min=+document.getElementById(g+"min").value;
+    const max=+document.getElementById(g+"max").value;
+    if(min>=max){ err="Invalid grade ranges"; break; }
+    if(i>0){
+      const pmin=+document.getElementById(grades[i-1]+"min").value;
+      if(max!==pmin-1){ err="Ranges must be continuous"; break; }
+    }
+  }
+  rangeError.textContent=err;
+  generateBtn.disabled=!!err;
+  if(!err) updatePreview();
+}
+
+function updatePreview(){
+  let counts={}, total=0;
+  grades.forEach(g=>counts[g]=0);
+  rawData.filter(r=>r.Course===courseSelect.value).forEach(r=>{
+    total++;
+    for(let g of grades){
+      const min=+document.getElementById(g+"min").value;
+      const max=+document.getElementById(g+"max").value;
+      if(r["Total Marks"]>=min&&r["Total Marks"]<=max){
+        counts[g]++; break;
+      }
+    }
+  });
+  let html=`<strong>Grade Distribution Preview (${total} students)</strong><br>`;
+  grades.forEach(g=>html+=`${g}: ${counts[g]}<br>`);
+  livePreview.innerHTML=html;
+}
+
+function drawHistogram(){
+  const ctx=histCanvas.getContext("2d");
   ctx.clearRect(0,0,1000,360);
-  let bins = Array(10).fill(0);
-  data.forEach(d => bins[Math.min(9, Math.floor(d["Total Marks"]/10))]++);
+  let bins=Array(10).fill(0);
+  rawData.filter(r=>r.Course===courseSelect.value)
+    .forEach(r=>bins[Math.min(9,Math.floor(r["Total Marks"]/10))]++);
   bins.forEach((v,i)=>{
     ctx.fillStyle="#5b3cc4";
     ctx.fillRect(60+i*90,300-v*18,45,v*18);
-    ctx.fillStyle="#000";
-    ctx.fillText(`${i*10}-${i*10+9}`,60+i*90,330);
-    ctx.fillText(v,75+i*90,290-v*18);
   });
+
+  // Bell curve
+  const marks=rawData.filter(r=>r.Course===courseSelect.value)
+    .map(r=>r["Total Marks"]);
+  const mean=marks.reduce((a,b)=>a+b,0)/marks.length;
+  const std=Math.sqrt(marks.reduce((a,b)=>a+(b-mean)**2,0)/marks.length);
+
+  ctx.strokeStyle="#dc2626";
+  ctx.beginPath();
+  for(let x=0;x<=100;x++){
+    const y=(1/(std*Math.sqrt(2*Math.PI)))*
+      Math.exp(-0.5*((x-mean)/std)**2);
+    const px=60+(x/10)*90;
+    const py=300-y*4000;
+    x===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+  }
+  ctx.stroke();
 }
 
-function showStats(data) {
-  const marks = data.map(d => d["Total Marks"]).sort((a,b)=>a-b);
-  document.getElementById("minMarks").innerText = marks[0];
-  document.getElementById("maxMarks").innerText = marks[marks.length-1];
-  document.getElementById("avgMarks").innerText =
-    (marks.reduce((a,b)=>a+b,0)/marks.length).toFixed(2);
-  document.getElementById("medianMarks").innerText =
-    marks.length%2 ? marks[Math.floor(marks.length/2)] :
-    ((marks[marks.length/2-1]+marks[marks.length/2])/2);
+function computeStats(){
+  const marks=rawData.filter(r=>r.Course===courseSelect.value)
+    .map(r=>r["Total Marks"]).sort((a,b)=>a-b);
+  minMarks.innerText=marks[0];
+  maxMarks.innerText=marks[marks.length-1];
+  avgMarks.innerText=(marks.reduce((a,b)=>a+b,0)/marks.length).toFixed(2);
+  medianMarks.innerText=
+    marks.length%2?marks[Math.floor(marks.length/2)]
+    :(marks[marks.length/2-1]+marks[marks.length/2])/2;
 }
 
-function buildSliders() {
-  const s = document.getElementById("sliders");
-  s.innerHTML = "";
-  cutGrades.forEach(g=>{
-    s.innerHTML += `
-      <div class="slider-row">
-        <div class="slider-label">
-          <span>${g} minimum marks</span>
-          <span id="${g}_val">${defaults[g]}</span>
-        </div>
-        <input type="range" min="0" max="100" value="${defaults[g]}"
-          oninput="this.nextSibling; document.getElementById('${g}_val').innerText=this.value">
-      </div>`;
+function generate(){
+  gradedResults=[];
+  rawData.filter(r=>r.Course===courseSelect.value).forEach(r=>{
+    for(let g of grades){
+      const min=+document.getElementById(g+"min").value;
+      const max=+document.getElementById(g+"max").value;
+      if(r["Total Marks"]>=min&&r["Total Marks"]<=max){
+        gradedResults.push({...r,grade:g}); break;
+      }
+    }
   });
-}
-
-function finalizeGrades() {
-  alert(`Grades finalized successfully.\nThank you, ${userName}.`);
+  let csv=`Instructor,${instructorName}\nBITS ID,Course,Grade\n`;
+  gradedResults.forEach(r=>csv+=`${r["BITS ID"]},${r.Course},${r.grade}\n`);
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="final_grades.csv";
+  a.click();
 }
 </script>
 
