@@ -111,14 +111,14 @@ th {
   <h1>BITS Pilani Digital Advanced Grading App</h1>
 </header>
 
-<!-- LANDING -->
-<section id="welcomeSection">
-  <input id="instName" placeholder="Enter your first name">
-  <button onclick="proceed()">Continue</button>
+<!-- LANDING (ONLY NAME + STEPS) -->
+<section id="landingBlock">
+  <input id="firstNameInput" placeholder="Enter your first name">
+  <button onclick="enterApp()">Continue</button>
 
   <h3 style="margin-top:16px;">How to use this app</h3>
   <ol>
-    <li>Upload course marks Excel</li>
+    <li>Upload course marks Excel file</li>
     <li>Select the course</li>
     <li>Review histogram, bell curve and statistics</li>
     <li>Adjust grade ranges</li>
@@ -127,20 +127,20 @@ th {
 </section>
 
 <!-- UPLOAD -->
-<section id="uploadSection" class="hidden">
-  <h3 id="greeting"></h3>
-  <input type="file" id="fileInput" accept=".xlsx">
+<section id="uploadBlock" class="hidden">
+  <h3 id="welcomeText"></h3>
+  <input type="file" id="marksFile" accept=".xlsx">
 </section>
 
-<section id="courseSection" class="hidden">
+<section id="courseBlock" class="hidden">
   <h3>Select Course</h3>
-  <select id="courseSelect">
+  <select id="courseDropdown">
     <option value="">-- Select Course --</option>
   </select>
 </section>
 
 <!-- ANALYSIS -->
-<section id="analysisSection" class="hidden">
+<section id="analysisBlock" class="hidden">
   <h3>📊 Marks Distribution</h3>
   <canvas id="histCanvas" width="1000" height="360"></canvas>
 
@@ -153,140 +153,149 @@ th {
       <th>Median</th>
     </tr>
     <tr>
-      <td id="maxMarks"></td>
-      <td id="minMarks"></td>
-      <td id="avgMarks"></td>
-      <td id="medianMarks"></td>
+      <td id="statMax"></td>
+      <td id="statMin"></td>
+      <td id="statAvg"></td>
+      <td id="statMedian"></td>
     </tr>
   </table>
 </section>
 
 <!-- GRADING -->
-<section id="gradingSection" class="hidden">
+<section id="gradingBlock" class="hidden">
   <h3>Define Grade Ranges</h3>
   <div class="grid" id="gradeGrid"></div>
   <div id="rangeError" class="error"></div>
   <div id="livePreview" class="preview"></div>
 
-  <button id="generateBtn" onclick="generate()" disabled>
+  <button id="finalizeBtn" onclick="finalizeGrades()" disabled>
     Finalize Grades & Download
   </button>
 </section>
 
 <script>
-let instructorName="", rawData=[], gradedResults=[];
-const grades=["A","A-","B","B-","C","C-","D","E"];
-const defaults={
-"A":[80,100],"A-":[70,79],"B":[60,69],"B-":[50,59],
-"C":[40,49],"C-":[30,39],"D":[20,29],"E":[0,19]
+let userName = "";
+let rawData = [];
+let gradedResults = [];
+
+const grades = ["A","A-","B","B-","C","C-","D","E"];
+const defaults = {
+  "A":[80,100],"A-":[70,79],"B":[60,69],"B-":[50,59],
+  "C":[40,49],"C-":[30,39],"D":[20,29],"E":[0,19]
 };
 
-function proceed(){
-  instructorName=instName.value.trim();
-  if(!instructorName){ alert("Please enter your first name"); return; }
-  welcomeSection.classList.add("hidden");
-  uploadSection.classList.remove("hidden");
-  greeting.innerText=`Hi ${instructorName}, welcome to BITS Pilani Digital’s Advanced Grading App`;
+function enterApp(){
+  userName = firstNameInput.value.trim();
+  if(!userName){
+    alert("Please enter your first name");
+    return;
+  }
+  landingBlock.classList.add("hidden");
+  uploadBlock.classList.remove("hidden");
+  welcomeText.innerText =
+    `Hi ${userName}, welcome to BITS Pilani Digital’s Advanced Grading App`;
 }
 
-fileInput.onchange=e=>{
-  const r=new FileReader();
-  r.onload=ev=>{
-    const wb=XLSX.read(ev.target.result,{type:"binary"});
-    rawData=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    courseSelect.innerHTML='<option value="">-- Select Course --</option>';
+/* FILE UPLOAD */
+marksFile.onchange = e => {
+  const r = new FileReader();
+  r.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type:"binary" });
+    rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    courseDropdown.innerHTML = '<option value="">-- Select Course --</option>';
     [...new Set(rawData.map(r=>r.Course))].forEach(c=>{
-      courseSelect.innerHTML+=`<option>${c}</option>`;
+      courseDropdown.innerHTML += `<option>${c}</option>`;
     });
-    courseSection.classList.remove("hidden");
+    courseBlock.classList.remove("hidden");
   };
   r.readAsBinaryString(e.target.files[0]);
 };
 
-courseSelect.onchange=()=>{
-  if(courseSelect.value){
-    analysisSection.classList.remove("hidden");
-    gradingSection.classList.remove("hidden");
+courseDropdown.onchange = () => {
+  if(courseDropdown.value){
+    analysisBlock.classList.remove("hidden");
+    gradingBlock.classList.remove("hidden");
     drawHistogram();
     computeStats();
-    resetDefaults();
+    buildGradeUI();
     validateRanges();
   }
 };
 
+/* GRADE UI */
 function dropdown(id){
-  let h=`<select id="${id}" onchange="validateRanges()">`;
-  for(let i=0;i<=100;i++) h+=`<option value="${i}">${i}</option>`;
-  return h+"</select>";
+  let h = `<select id="${id}" onchange="validateRanges()">`;
+  for(let i=0;i<=100;i++) h += `<option value="${i}">${i}</option>`;
+  return h + "</select>";
 }
 
-grades.forEach(g=>{
-  gradeGrid.innerHTML+=`
-  <div class="grade-card">
-    <strong>${g}</strong><br><br>
-    Min ${dropdown(g+"min")}<br>
-    Max ${dropdown(g+"max")}
-  </div>`;
-});
-
-function resetDefaults(){
+function buildGradeUI(){
+  gradeGrid.innerHTML = "";
   grades.forEach(g=>{
-    document.getElementById(g+"min").value=defaults[g][0];
-    document.getElementById(g+"max").value=defaults[g][1];
+    gradeGrid.innerHTML += `
+      <div class="grade-card">
+        <strong>${g}</strong><br><br>
+        Min ${dropdown(g+"min")}<br>
+        Max ${dropdown(g+"max")}
+      </div>`;
+  });
+  grades.forEach(g=>{
+    document.getElementById(g+"min").value = defaults[g][0];
+    document.getElementById(g+"max").value = defaults[g][1];
   });
 }
 
 function validateRanges(){
-  let err="";
+  let err = "";
   for(let i=0;i<grades.length;i++){
-    const g=grades[i];
-    const min=+document.getElementById(g+"min").value;
-    const max=+document.getElementById(g+"max").value;
-    if(min>=max){ err="Invalid grade ranges"; break; }
+    const g = grades[i];
+    const min = +document.getElementById(g+"min").value;
+    const max = +document.getElementById(g+"max").value;
+    if(min >= max){ err="Invalid grade ranges"; break; }
     if(i>0){
-      const pmin=+document.getElementById(grades[i-1]+"min").value;
-      if(max!==pmin-1){ err="Ranges must be continuous"; break; }
+      const pmin = +document.getElementById(grades[i-1]+"min").value;
+      if(max !== pmin-1){ err="Ranges must be continuous"; break; }
     }
   }
-  rangeError.textContent=err;
-  generateBtn.disabled=!!err;
+  rangeError.innerText = err;
+  finalizeBtn.disabled = !!err;
   if(!err) updatePreview();
 }
 
 function updatePreview(){
   let counts={}, total=0;
   grades.forEach(g=>counts[g]=0);
-  rawData.filter(r=>r.Course===courseSelect.value).forEach(r=>{
+  rawData.filter(r=>r.Course===courseDropdown.value).forEach(r=>{
     total++;
     for(let g of grades){
       const min=+document.getElementById(g+"min").value;
       const max=+document.getElementById(g+"max").value;
-      if(r["Total Marks"]>=min&&r["Total Marks"]<=max){
+      if(r["Total Marks"]>=min && r["Total Marks"]<=max){
         counts[g]++; break;
       }
     }
   });
   let html=`<strong>Grade Distribution Preview (${total} students)</strong><br>`;
   grades.forEach(g=>html+=`${g}: ${counts[g]}<br>`);
-  livePreview.innerHTML=html;
+  livePreview.innerHTML = html;
 }
 
+/* HISTOGRAM + BELL CURVE */
 function drawHistogram(){
-  const ctx=histCanvas.getContext("2d");
+  const ctx = histCanvas.getContext("2d");
   ctx.clearRect(0,0,1000,360);
-  let bins=Array(10).fill(0);
-  rawData.filter(r=>r.Course===courseSelect.value)
+  let bins = Array(10).fill(0);
+  rawData.filter(r=>r.Course===courseDropdown.value)
     .forEach(r=>bins[Math.min(9,Math.floor(r["Total Marks"]/10))]++);
   bins.forEach((v,i)=>{
     ctx.fillStyle="#5b3cc4";
     ctx.fillRect(60+i*90,300-v*18,45,v*18);
   });
 
-  // Bell curve
-  const marks=rawData.filter(r=>r.Course===courseSelect.value)
+  const marks = rawData.filter(r=>r.Course===courseDropdown.value)
     .map(r=>r["Total Marks"]);
-  const mean=marks.reduce((a,b)=>a+b,0)/marks.length;
-  const std=Math.sqrt(marks.reduce((a,b)=>a+(b-mean)**2,0)/marks.length);
+  const mean = marks.reduce((a,b)=>a+b,0)/marks.length;
+  const std = Math.sqrt(marks.reduce((a,b)=>a+(b-mean)**2,0)/marks.length);
 
   ctx.strokeStyle="#dc2626";
   ctx.beginPath();
@@ -301,19 +310,19 @@ function drawHistogram(){
 }
 
 function computeStats(){
-  const marks=rawData.filter(r=>r.Course===courseSelect.value)
+  const marks = rawData.filter(r=>r.Course===courseDropdown.value)
     .map(r=>r["Total Marks"]).sort((a,b)=>a-b);
-  minMarks.innerText=marks[0];
-  maxMarks.innerText=marks[marks.length-1];
-  avgMarks.innerText=(marks.reduce((a,b)=>a+b,0)/marks.length).toFixed(2);
-  medianMarks.innerText=
+  statMin.innerText = marks[0];
+  statMax.innerText = marks[marks.length-1];
+  statAvg.innerText = (marks.reduce((a,b)=>a+b,0)/marks.length).toFixed(2);
+  statMedian.innerText =
     marks.length%2?marks[Math.floor(marks.length/2)]
     :(marks[marks.length/2-1]+marks[marks.length/2])/2;
 }
 
-function generate(){
+function finalizeGrades(){
   gradedResults=[];
-  rawData.filter(r=>r.Course===courseSelect.value).forEach(r=>{
+  rawData.filter(r=>r.Course===courseDropdown.value).forEach(r=>{
     for(let g of grades){
       const min=+document.getElementById(g+"min").value;
       const max=+document.getElementById(g+"max").value;
@@ -322,7 +331,7 @@ function generate(){
       }
     }
   });
-  let csv=`Instructor,${instructorName}\nBITS ID,Course,Grade\n`;
+  let csv=`Instructor,${userName}\nBITS ID,Course,Grade\n`;
   gradedResults.forEach(r=>csv+=`${r["BITS ID"]},${r.Course},${r.grade}\n`);
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
